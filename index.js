@@ -46,10 +46,10 @@ function onLogout(user) {
 var reback_message_listen = true // 是否开启防撤回，默认开启
 var reback_message = [] // 自动保存最近的30条记录
 async function onMessage(msg) {
-  const contact = await msg.talker(); // 发消息人
+  const contact = await msg.talker(); // 发消息人 
   const content = await msg.text().trim(); // 消息内容
   const room = await msg.room(); // 是否是群消息
-  const alias = await contact.alias() || await contact.name(); // 发消息人备注
+  const alias = await contact.alias() || contact.name(); // 发消息人备注
   const isText = msg.type() === bot.Message.Type.Text; // 检测属于文字内容
   const isImage = msg.type() === bot.Message.Type.Image; // 检测属于图片
   // if (isImage) {
@@ -57,10 +57,8 @@ async function onMessage(msg) {
   // console.log(file)
   // }
   let str = '';
-  if (msg.self()) return; // 如果是自己发的消息则直接过滤
-  let tianqi = content.split('天气') || []; // 天气
-  let xingzuo = content.split('运势') || []; // 运势
-  let lajifenlei = content.split('是什么垃圾') || []; // 垃圾分类
+  if (msg.self()) return // 如果是自己发的消息则直接过滤
+  let content_key = content.split('天气') || content.split('运势') || content.split('是什么垃圾') || []; // 天气
   switch (content) {
     case '@Bot':
       str = config.keywordsTip;
@@ -89,21 +87,21 @@ async function onMessage(msg) {
       let zaoan = await superagent.getZaoAn(); //获取早安心语
       str = `${zaoan}`;
       break;
-    case lajifenlei[0] + '是什么垃圾':
-      if (lajifenlei[0]) {
-        let fenlei = await superagent.getRubbishType(lajifenlei[0]); //获取垃圾分类
+    case content_key[0] + '是什么垃圾':
+      if (content_key[0]) {
+        let fenlei = await superagent.getRubbishType(content_key[0]); //获取垃圾分类
         if (fenlei) str = `${fenlei}`;
       }
       break;
-    case tianqi[0] + '天气':
-      if (tianqi[0]) {
-        let weather = await superagent.getTXweather(tianqi[0]); //获取天气信息
+    case content_key[0] + '天气':
+      if (content_key[0]) {
+        let weather = await superagent.getTXweather(content_key[0]); //获取天气信息
         if (weather) str = `${weather}`;
       }
       break;
-    case xingzuo[0] + '运势':
-      if (xingzuo[0]) {
-        let text = await superagent.getXingZuo(xingzuo[0]); //获取星座信息
+    case content_key[0] + '运势':
+      if (content_key[0]) {
+        let text = await superagent.getXingZuo(content_key[0]); //获取星座信息
         if (text) str = `${text}`;
       }
       break;
@@ -116,19 +114,22 @@ async function onMessage(msg) {
       str += `已关闭防撤回`;
       break;
     default:
-      let check_contact_message = '', check_contact_type = ''
+      // 尝试性开发的功能，不符合微信规定，无优化，无调整，存在一定的风险
+      let check_contact_data = null
       if (reback_message_listen && content.match('\" 撤回了一条消息')) {
         for (let i = 0; i < reback_message.length; i++) {
           if (reback_message[i].name == alias) {
-            check_contact_message = reback_message[i].content // 获取该用户最近的一条文字内容
-            check_contact_type = reback_message[i].isText
+            check_contact_data = reback_message[i]
           }
         }
-        if (check_contact_message && check_contact_type) {
+        if (check_contact_data && check_contact_data.isText) {
+          let reg = /\["(.*?)" 撤回了一条消息\]/g
+          let name = content.match(reg)
+          name = name ? name[0].split('"')[1] : ''
           // 如果有返回值则进行内容回复
-          str += `太天真了，想撤回不可能的\n`;
-          str += `${alias} 说: ${check_contact_message}\n`;
-          str += `【消息防撤回仅支持文字消息，关闭防撤回请说：关闭防撤回】`;
+          // str += `太天真了，想撤回不可能的\n`;
+          str += `${name} 说: ${check_contact_data.content}\n`;
+          str += `【消息防撤回仅支持最近的一条文字消息，关闭防撤回请说：关闭防撤回】`;
         }
       } else {
         if (reback_message.length > 29) reback_message.splice(0, 1) // 如果已记录对话超过30条，自动删除第一条
@@ -150,42 +151,7 @@ async function onMessage(msg) {
       if (str) await superagent.sendRoomMessage(room, str);
     }
   } else {
-    // console.log(`发消息人: ${alias} 消息内容: ${content}`);
     if (str) await superagent.sendRoomMessage(contact, str)
-    // if (isText) {
-    //   // 如果非群消息 目前只处理文字消息
-    //   if (content.substr(0, 1) == '?' || content.substr(0, 1) == '？') {
-    //     let contactContent = content.replace('?', '').replace('？', '');
-    //     if (contactContent) {
-    //       let res = await superagent.getRubbishType(contactContent);
-    //       await delay(1000);
-    //     }
-    //   } else if (config.AUTOREPLY && config.AUTOREPLYPERSON.indexOf(alias) > -1) {
-    //     // 如果开启自动聊天且已经指定了智能聊天的对象才开启机器人聊天\
-    //     if (content) {
-    //       let reply;
-    //       if (config.DEFAULTBOT == '0') {
-    //         // 天行聊天机器人逻辑
-    //         reply = await superagent.getReply(content);
-    //         console.log('天行机器人回复：', reply);
-    //       } else if (config.DEFAULTBOT == '1') {
-    //         // 图灵聊天机器人
-    //         reply = await superagent.getTuLingReply(content);
-    //         console.log('图灵机器人回复：', reply);
-    //       } else if (config.DEFAULTBOT == '2') {
-    //         // 天行对接的图灵聊
-    //         reply = await superagent.getTXTLReply(content);
-    //         console.log('天行对接的图灵机器人回复：', reply);
-    //       }
-    //       try {
-    //         await delay(1000);
-    //         await contact.say(reply);
-    //       } catch (e) {
-    //         console.error(e);
-    //       }
-    //     }
-    //   }
-    // }
   }
 }
 
